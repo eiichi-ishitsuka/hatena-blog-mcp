@@ -1,0 +1,74 @@
+site_name: Hatena Blog MCP Server
+site_description: はてなブログのAtomPub APIを利用するMCPサーバーのドキュメント
+site_author: eiichi-ishitsuka
+site_url: https://your-username.github.io/hatena-blog-mcp/
+
+repo_name: hatena-blog-mcp
+repo_url: https://github.com/your-username/hatena-blog-mcp
+
+theme:
+  name: material
+  language: ja
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.select
+
+nav:
+  - ホーム: index.md
+  - セットアップ: setup.md
+  - 使用方法: usage.md
+  - API リファレンス: api-reference.md
+  - 開発ガイド: development.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+plugins:
+  - search:
+      lang: ja
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: datetime
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/your-username/hatena-blog-mcp
+      name: GitHub Repository
+
+copyright: Copyright &copy; 2025 eiichi-ishitsuka
