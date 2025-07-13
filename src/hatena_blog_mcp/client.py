@@ -164,6 +164,103 @@ class HatenaBlogClient:
         
         return categories
     
+    def create_entry(self, title: str, content: str, categories: List[str] = None, is_draft: bool = True) -> BlogEntry:
+        """Create a new blog entry.
+        
+        Args:
+            title: Entry title
+            content: Entry content
+            categories: List of category names (optional)
+            is_draft: Whether to create as draft (default: True)
+            
+        Returns:
+            Created blog entry
+            
+        Raises:
+            requests.exceptions.HTTPError: If creation fails
+        """
+        if categories is None:
+            categories = []
+        
+        # Create Atom entry XML
+        entry_xml = self._create_entry_xml(title, content, categories, is_draft)
+        
+        headers = {
+            'Content-Type': 'application/xml; charset=utf-8'
+        }
+        
+        response = requests.post(
+            self._entry_collection_url,
+            auth=self.auth,
+            data=entry_xml.encode('utf-8'),
+            headers=headers
+        )
+        response.raise_for_status()
+        
+        # Parse the response to get the created entry
+        try:
+            # Try parsing as feed first
+            entries = self._parse_feed(response.text)
+            if entries:
+                return entries[0]
+            
+            # If no entries in feed, try parsing as single entry
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(response.text)
+            
+            # Check if root is an entry element
+            if root.tag.endswith('}entry') or root.tag == 'entry':
+                entry = self._parse_entry(root)
+                if entry:
+                    return entry
+            
+            raise ValueError("Failed to parse created entry from response")
+        except ET.ParseError as e:
+            raise ValueError(f"Failed to parse XML response: {e}")
+        except Exception as e:
+            # Include response content for debugging
+            raise ValueError(f"Failed to parse created entry from response: {e}. Response content: {response.text[:500]}...")
+    
+    def _create_entry_xml(self, title: str, content: str, categories: List[str], is_draft: bool) -> str:
+        """Create Atom entry XML for posting.
+        
+        Args:
+            title: Entry title
+            content: Entry content
+            categories: List of category names
+            is_draft: Whether this is a draft
+            
+        Returns:
+            XML string
+        """
+        # Create root entry element
+        entry = ET.Element('entry')
+        entry.set('xmlns', 'http://www.w3.org/2005/Atom')
+        entry.set('xmlns:app', 'http://www.w3.org/2007/app')
+        
+        # Title
+        title_elem = ET.SubElement(entry, 'title')
+        title_elem.text = title
+        
+        # Content
+        content_elem = ET.SubElement(entry, 'content')
+        content_elem.set('type', 'text/html')
+        content_elem.text = content
+        
+        # Categories
+        for category in categories:
+            cat_elem = ET.SubElement(entry, 'category')
+            cat_elem.set('term', category)
+        
+        # Draft status - use app:control/app:draft structure
+        if is_draft:
+            control_elem = ET.SubElement(entry, '{http://www.w3.org/2007/app}control')
+            draft_elem = ET.SubElement(control_elem, '{http://www.w3.org/2007/app}draft')
+            draft_elem.text = 'yes'
+        
+        # Convert to string
+        return ET.tostring(entry, encoding='unicode', method='xml')
+    
     def _parse_feed(self, xml_content: str) -> List[BlogEntry]:
         """Parse Atom feed XML.
         
@@ -220,8 +317,11 @@ class HatenaBlogClient:
                 if term:
                     categories.append(term)
             
-            # Check if draft
-            draft_elem = entry_elem.find('.//app:draft', self.ns)
+            # Check if draft - look in app:control/app:draft structure
+            draft_elem = entry_elem.find('.//app:control/app:draft', self.ns)
+            if not draft_elem:
+                # Fallback: try direct app:draft
+                draft_elem = entry_elem.find('.//app:draft', self.ns)
             is_draft = draft_elem is not None and draft_elem.text == 'yes'
             
             # Find edit URL
@@ -243,5 +343,8 @@ class HatenaBlogClient:
                 edit_url=edit_url
             )
         
-        except Exception:
+        except Exception as e:
+            # For debugging: print the exception (remove in production)
+            import sys
+            print(f"Parse entry error: {e}", file=sys.stderr)
             return None

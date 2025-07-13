@@ -106,6 +106,36 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {},
                 "additionalProperties": False
             }
+        ),
+        Tool(
+            name="create_blog_entry",
+            description="Create a new blog entry as draft",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Entry title"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Entry content (HTML or plain text)"
+                    },
+                    "categories": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of category names (optional)",
+                        "default": []
+                    },
+                    "is_draft": {
+                        "type": "boolean",
+                        "description": "Whether to create as draft (default: true)",
+                        "default": True
+                    }
+                },
+                "required": ["title", "content"],
+                "additionalProperties": False
+            }
         )
     ]
 
@@ -173,6 +203,20 @@ async def handle_call_tool(name: str, arguments: dict[str, Any] | None) -> list[
                 result += f"- {category}\n"
             
             return [TextContent(type="text", text=result.strip())]
+        
+        elif name == "create_blog_entry":
+            title = arguments["title"]
+            content = arguments["content"]
+            categories = arguments.get("categories", [])
+            is_draft = arguments.get("is_draft", True)
+            
+            entry = client.create_entry(title, content, categories, is_draft)
+            
+            status = "📝 Draft" if entry.is_draft else "✅ Published"
+            result = f"Successfully created blog entry: {status}\n\n"
+            result += format_entry_detail(entry)
+            
+            return [TextContent(type="text", text=result)]
         
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]

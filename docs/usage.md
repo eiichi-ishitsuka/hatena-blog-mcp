@@ -2,7 +2,7 @@
 
 ## MCPツールの概要
 
-Hatena Blog MCPサーバーは以下の4つのツールを提供します：
+Hatena Blog MCPサーバーは以下の5つのツールを提供します：
 
 ### 1. get_blog_entries
 
@@ -136,6 +136,47 @@ Available categories (5):
 - 雑記
 ```
 
+### 5. create_blog_entry
+
+新しいブログエントリを作成します（デフォルトで下書き）。
+
+パラメータ:
+
+- `title` (必須): 記事のタイトル
+- `content` (必須): 記事の内容（HTMLまたはプレーンテキスト）
+- `categories` (オプション): カテゴリ名のリスト
+- `is_draft` (オプション): 下書きかどうか（デフォルト: true）
+
+使用例:
+```json
+{
+  "name": "create_blog_entry",
+  "arguments": {
+    "title": "新しい記事のタイトル",
+    "content": "<p>記事の内容をHTMLで記述</p>",
+    "categories": ["技術", "Python"],
+    "is_draft": true
+  }
+}
+```
+
+戻り値:
+```
+Successfully created blog entry: 📝 Draft
+
+# 新しい記事のタイトル 📝 Draft
+
+**ID:** 987654321
+**Author:** author-name
+**Published:** 2024-01-15 15:45:30
+**Updated:** 2024-01-15 15:45:30
+**Categories:** 技術, Python
+
+## Content
+
+<p>記事の内容をHTMLで記述</p>
+```
+
 ## MCPリソース
 
 MCPサーバーは以下のリソースも提供します：
@@ -167,6 +208,11 @@ Blog entry '999999' not found.
 No blog entries found matching 'nonexistent-term'.
 ```
 
+4. 記事作成エラー
+```
+Error: Failed to create entry. Please check your authentication and permissions.
+```
+
 ### 設定関連のエラー
 
 ```
@@ -182,6 +228,7 @@ Error: Missing required environment variables: HATENA_ID, HATENA_API_KEY, HATENA
 1. 記事検索: 大量の記事がある場合は`search_blog_entries`を使用して特定の記事を見つける
 2. ページネーション: `get_blog_entries`でページごとに記事を取得する
 3. 詳細表示: 興味のある記事のIDがわかったら`get_blog_entry`で詳細を取得する
+4. 記事作成: `create_blog_entry`で新しい記事を下書きとして作成し、内容を確認してからブログ管理画面で公開する
 
 ### パフォーマンス考慮事項
 

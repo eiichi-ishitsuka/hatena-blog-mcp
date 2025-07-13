@@ -67,6 +67,21 @@ HatenaBlogClient(hatena_id: str, api_key: str, blog_id: str)
 
 実装: `src/hatena_blog_mcp/client.py:146`
 
+#### create_entry(title: str, content: str, categories: List[str] = None, is_draft: bool = True) -> BlogEntry
+
+機能: 新しいブログエントリを作成します。
+
+パラメータ:
+
+- `title`: 記事のタイトル
+- `content`: 記事の内容（HTMLまたはプレーンテキスト）
+- `categories`: カテゴリ名のリスト（デフォルト: None）
+- `is_draft`: 下書きかどうか（デフォルト: True）
+
+戻り値: 作成された`BlogEntry`オブジェクト
+
+実装: `src/hatena_blog_mcp/client.py:167`
+
 ## BlogEntry クラス
 
 ### 概要

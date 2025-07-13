@@ -323,3 +323,163 @@ class TestHatenaBlogClient:
         
         assert result is not None
         assert result.edit_url == "https://blog.hatena.ne.jp/test_user/atom/entry/123"
+    
+    @patch('hatena_blog_mcp.client.requests.post')
+    def test_create_entry(self, mock_post):
+        """Test creating a new blog entry."""
+        # Mock response for successful creation
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.text = '''<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:app="http://www.w3.org/2007/app">
+    <entry>
+        <id>https://test.hatenablog.com/entry/123</id>
+        <title>New Test Entry</title>
+        <content type="text/html">Test content</content>
+        <published>2024-01-01T10:00:00Z</published>
+        <updated>2024-01-01T10:00:00Z</updated>
+        <author><name>test_user</name></author>
+        <category term="test" />
+        <app:draft>yes</app:draft>
+    </entry>
+</feed>'''
+        mock_post.return_value = mock_response
+        
+        entry = self.client.create_entry(
+            title="New Test Entry",
+            content="Test content",
+            categories=["test"],
+            is_draft=True
+        )
+        
+        assert entry.id == "123"
+        assert entry.title == "New Test Entry"
+        assert entry.content == "Test content"
+        assert entry.is_draft is True
+        assert "test" in entry.categories
+        
+        # Verify the POST request was made correctly
+        mock_post.assert_called_once()
+        call_args = mock_post.call_args
+        assert call_args[0][0] == "https://blog.hatena.ne.jp/test_user/atom/entry"
+        assert call_args[1]['auth'] == ("test_user", "test_key")
+        assert call_args[1]['headers']['Content-Type'] == 'application/xml; charset=utf-8'
+        
+        # Check that XML was properly formed
+        xml_data = call_args[1]['data'].decode('utf-8')
+        assert '<title>New Test Entry</title>' in xml_data
+        assert '<content type="text/html">Test content</content>' in xml_data
+        assert '<category term="test"' in xml_data
+        assert (':control>' in xml_data or '<app:control>' in xml_data) and ':draft>yes</' in xml_data
+    
+    @patch('hatena_blog_mcp.client.requests.post')
+    def test_create_entry_published(self, mock_post):
+        """Test creating a published blog entry."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.text = '''<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <entry>
+        <id>https://test.hatenablog.com/entry/124</id>
+        <title>Published Entry</title>
+        <content type="text/html">Published content</content>
+        <published>2024-01-01T10:00:00Z</published>
+        <updated>2024-01-01T10:00:00Z</updated>
+        <author><name>test_user</name></author>
+    </entry>
+</feed>'''
+        mock_post.return_value = mock_response
+        
+        entry = self.client.create_entry(
+            title="Published Entry",
+            content="Published content",
+            is_draft=False
+        )
+        
+        assert entry.is_draft is False
+        
+        # Check that no control/draft elements are included for published entries
+        xml_data = mock_post.call_args[1]['data'].decode('utf-8')
+        assert ':control>' not in xml_data
+    
+    @patch('hatena_blog_mcp.client.requests.post')
+    def test_create_entry_no_categories(self, mock_post):
+        """Test creating entry with no categories."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.text = '''<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <entry>
+        <id>https://test.hatenablog.com/entry/125</id>
+        <title>No Categories Entry</title>
+        <content type="text/html">Content without categories</content>
+        <published>2024-01-01T10:00:00Z</published>
+        <updated>2024-01-01T10:00:00Z</updated>
+        <author><name>test_user</name></author>
+    </entry>
+</feed>'''
+        mock_post.return_value = mock_response
+        
+        entry = self.client.create_entry(
+            title="No Categories Entry",
+            content="Content without categories"
+        )
+        
+        assert len(entry.categories) == 0
+        
+        # Check that no category elements are included
+        xml_data = mock_post.call_args[1]['data'].decode('utf-8')
+        assert '<category' not in xml_data
+    
+    @patch('hatena_blog_mcp.client.requests.post')
+    def test_create_entry_http_error(self, mock_post):
+        """Test creating entry with HTTP error."""
+        mock_response = Mock()
+        mock_response.status_code = 400
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(response=mock_response)
+        mock_post.return_value = mock_response
+        
+        with pytest.raises(requests.exceptions.HTTPError):
+            self.client.create_entry("Test Title", "Test Content")
+    
+    @patch('hatena_blog_mcp.client.requests.post')
+    def test_create_entry_parse_error(self, mock_post):
+        """Test creating entry with parse error in response."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.text = '''<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+</feed>'''  # Empty feed
+        mock_post.return_value = mock_response
+        
+        with pytest.raises(ValueError, match="Failed to parse created entry from response"):
+            self.client.create_entry("Test Title", "Test Content")
+    
+    def test_create_entry_xml_generation(self):
+        """Test XML generation for entry creation."""
+        xml = self.client._create_entry_xml(
+            title="Test Title",
+            content="<p>Test content</p>",
+            categories=["cat1", "cat2"],
+            is_draft=True
+        )
+        
+        assert '<title>Test Title</title>' in xml
+        assert '<content type="text/html">&lt;p&gt;Test content&lt;/p&gt;</content>' in xml
+        assert '<category term="cat1"' in xml
+        assert '<category term="cat2"' in xml
+        assert (':control>' in xml or '<app:control>' in xml) and ':draft>yes</' in xml
+        assert 'xmlns="http://www.w3.org/2005/Atom"' in xml
+        assert 'xmlns:app="http://www.w3.org/2007/app"' in xml
+    
+    def test_create_entry_xml_generation_no_draft(self):
+        """Test XML generation without control/draft elements for published entries."""
+        xml = self.client._create_entry_xml(
+            title="Published Title",
+            content="Published content",
+            categories=[],
+            is_draft=False
+        )
+        
+        assert ':control>' not in xml
+        assert '<category' not in xml

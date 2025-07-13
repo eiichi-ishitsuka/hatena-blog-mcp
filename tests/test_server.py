@@ -56,12 +56,13 @@ class TestHandlers:
         """Test listing available tools."""
         tools = await handle_list_tools()
         
-        assert len(tools) == 4
+        assert len(tools) == 5
         tool_names = [tool.name for tool in tools]
         assert "get_blog_entries" in tool_names
         assert "get_blog_entry" in tool_names
         assert "search_blog_entries" in tool_names
         assert "get_blog_categories" in tool_names
+        assert "create_blog_entry" in tool_names
     
     @pytest.mark.asyncio
     async def test_handle_list_resources(self):
@@ -407,3 +408,103 @@ class TestMain:
         cli_main()
         
         mock_exit.assert_called_once_with(0)
+    
+    @pytest.mark.asyncio
+    @patch('hatena_blog_mcp.server.get_client')
+    async def test_handle_call_tool_create_blog_entry(self, mock_get_client):
+        """Test create_blog_entry tool call."""
+        mock_client = Mock()
+        mock_entry = BlogEntry(
+            id="456",
+            title="New Blog Post",
+            content="This is a new blog post",
+            published=datetime(2024, 1, 1, 15, 0, 0),
+            updated=datetime(2024, 1, 1, 15, 0, 0),
+            author="test_user",
+            categories=["Tech", "Python"],
+            is_draft=True
+        )
+        mock_client.create_entry.return_value = mock_entry
+        mock_get_client.return_value = mock_client
+        
+        result = await handle_call_tool("create_blog_entry", {
+            "title": "New Blog Post",
+            "content": "This is a new blog post",
+            "categories": ["Tech", "Python"],
+            "is_draft": True
+        })
+        
+        assert len(result) == 1
+        assert "Successfully created blog entry: 📝 Draft" in result[0].text
+        assert "New Blog Post" in result[0].text
+        assert "Tech, Python" in result[0].text
+        mock_client.create_entry.assert_called_once_with(
+            "New Blog Post",
+            "This is a new blog post",
+            ["Tech", "Python"],
+            True
+        )
+    
+    @pytest.mark.asyncio
+    @patch('hatena_blog_mcp.server.get_client')
+    async def test_handle_call_tool_create_blog_entry_published(self, mock_get_client):
+        """Test create_blog_entry tool call for published entry."""
+        mock_client = Mock()
+        mock_entry = BlogEntry(
+            id="457",
+            title="Published Post",
+            content="This is a published post",
+            published=datetime(2024, 1, 1, 16, 0, 0),
+            updated=datetime(2024, 1, 1, 16, 0, 0),
+            author="test_user",
+            is_draft=False
+        )
+        mock_client.create_entry.return_value = mock_entry
+        mock_get_client.return_value = mock_client
+        
+        result = await handle_call_tool("create_blog_entry", {
+            "title": "Published Post",
+            "content": "This is a published post",
+            "is_draft": False
+        })
+        
+        assert len(result) == 1
+        assert "Successfully created blog entry: ✅ Published" in result[0].text
+        assert "Published Post" in result[0].text
+        mock_client.create_entry.assert_called_once_with(
+            "Published Post",
+            "This is a published post",
+            [],
+            False
+        )
+    
+    @pytest.mark.asyncio
+    @patch('hatena_blog_mcp.server.get_client')
+    async def test_handle_call_tool_create_blog_entry_defaults(self, mock_get_client):
+        """Test create_blog_entry tool call with default values."""
+        mock_client = Mock()
+        mock_entry = BlogEntry(
+            id="458",
+            title="Default Settings Post",
+            content="Post with default settings",
+            published=datetime(2024, 1, 1, 17, 0, 0),
+            updated=datetime(2024, 1, 1, 17, 0, 0),
+            author="test_user",
+            is_draft=True
+        )
+        mock_client.create_entry.return_value = mock_entry
+        mock_get_client.return_value = mock_client
+        
+        result = await handle_call_tool("create_blog_entry", {
+            "title": "Default Settings Post",
+            "content": "Post with default settings"
+        })
+        
+        assert len(result) == 1
+        assert "📝 Draft" in result[0].text
+        mock_client.create_entry.assert_called_once_with(
+            "Default Settings Post",
+            "Post with default settings",
+            [],
+            True
+        )
