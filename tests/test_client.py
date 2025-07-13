@@ -76,45 +76,49 @@ class TestHatenaBlogClient:
             params={"page": 2}
         )
     
-    @patch('hatena_blog_mcp.client.requests.get')
-    def test_get_entry(self, mock_get):
+    def test_get_entry(self):
         """Test getting a specific entry."""
-        mock_response = Mock()
-        mock_response.raise_for_status.return_value = None
-        mock_response.text = '''<?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
-    <entry>
-        <id>https://test.hatenablog.com/entry/123</id>
-        <title>Test Entry</title>
-        <content type="text/plain">Test content</content>
-        <published>2024-01-01T10:00:00Z</published>
-        <author><name>test_user</name></author>
-    </entry>
-</feed>'''
-        mock_get.return_value = mock_response
-        
-        entry = self.client.get_entry("123")
-        
-        assert entry is not None
-        assert entry.id == "123"
-        assert entry.title == "Test Entry"
-        
-        mock_get.assert_called_once_with(
-            "https://blog.hatena.ne.jp/test_user/atom/entry/123",
-            auth=("test_user", "test_key")
-        )
+        # Mock get_entries to return test data
+        with patch.object(self.client, 'get_entries') as mock_get_entries:
+            mock_entries_page1 = [
+                BlogEntry(
+                    id="123",
+                    title="Test Entry",
+                    content="Test content",
+                    published=datetime.now(),
+                    updated=datetime.now(),
+                    author="test_user"
+                ),
+                BlogEntry(
+                    id="456",
+                    title="Another Entry",
+                    content="Another content",
+                    published=datetime.now(),
+                    updated=datetime.now(),
+                    author="test_user"
+                )
+            ]
+            # Return entries on first page, empty on second page
+            mock_get_entries.side_effect = [mock_entries_page1, []]
+            
+            entry = self.client.get_entry("123")
+            
+            assert entry is not None
+            assert entry.id == "123"
+            assert entry.title == "Test Entry"
+            
+            # Should call get_entries with page 1
+            mock_get_entries.assert_called_with(1)
     
-    @patch('hatena_blog_mcp.client.requests.get')
-    def test_get_entry_not_found(self, mock_get):
+    def test_get_entry_not_found(self):
         """Test getting a non-existent entry."""
-        mock_response = Mock()
-        mock_response.status_code = 404
-        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(response=mock_response)
-        mock_get.return_value = mock_response
-        
-        entry = self.client.get_entry("nonexistent")
-        
-        assert entry is None
+        # Mock get_entries to return empty results
+        with patch.object(self.client, 'get_entries') as mock_get_entries:
+            mock_get_entries.return_value = []
+            
+            entry = self.client.get_entry("nonexistent")
+            
+            assert entry is None
     
     def test_search_entries(self):
         """Test searching entries."""
@@ -213,16 +217,40 @@ class TestHatenaBlogClient:
         
         assert client._entry_collection_url == "https://blog.hatena.ne.jp/test_user/atom/entry"
     
-    @patch('hatena_blog_mcp.client.requests.get')
-    def test_get_entry_http_error_not_404(self, mock_get):
-        """Test getting entry with non-404 HTTP error."""
-        mock_response = Mock()
-        mock_response.status_code = 500
-        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(response=mock_response)
-        mock_get.return_value = mock_response
-        
-        with pytest.raises(requests.exceptions.HTTPError):
-            self.client.get_entry("123")
+    def test_get_entry_multiple_pages(self):
+        """Test getting entry that requires searching multiple pages."""
+        with patch.object(self.client, 'get_entries') as mock_get_entries:
+            # Entry not found on first page, found on second page
+            mock_entries_page1 = [
+                BlogEntry(
+                    id="111",
+                    title="First Entry",
+                    content="First content",
+                    published=datetime.now(),
+                    updated=datetime.now(),
+                    author="test_user"
+                )
+            ]
+            mock_entries_page2 = [
+                BlogEntry(
+                    id="123",
+                    title="Target Entry",
+                    content="Target content",
+                    published=datetime.now(),
+                    updated=datetime.now(),
+                    author="test_user"
+                )
+            ]
+            mock_get_entries.side_effect = [mock_entries_page1, mock_entries_page2, []]
+            
+            entry = self.client.get_entry("123")
+            
+            assert entry is not None
+            assert entry.id == "123"
+            assert entry.title == "Target Entry"
+            
+            # Should call get_entries with page 1 and 2
+            assert mock_get_entries.call_count == 2
     
     def test_search_entries_max_search_limit(self):
         """Test search entries respects max search limit."""

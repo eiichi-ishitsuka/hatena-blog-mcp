@@ -100,17 +100,26 @@ class HatenaBlogClient:
         Returns:
             Blog entry or None if not found
         """
-        url = f"{self._entry_collection_url}/{entry_id}"
+        # Since AtomPub API doesn't support direct ID-based entry retrieval,
+        # we need to search through entries to find the matching ID
+        # This is not efficient but necessary due to API limitations
         
-        try:
-            response = requests.get(url, auth=self.auth)
-            response.raise_for_status()
-            entries = self._parse_feed(response.text)
-            return entries[0] if entries else None
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 404:
-                return None
-            raise
+        page = 1
+        while True:
+            entries = self.get_entries(page)
+            if not entries:
+                break
+                
+            for entry in entries:
+                if entry.id == entry_id:
+                    return entry
+            
+            page += 1
+            # Limit search to avoid infinite loops
+            if page > 50:  # Max 50 pages
+                break
+        
+        return None
     
     def search_entries(self, query: str, max_results: int = 10) -> List[BlogEntry]:
         """Search blog entries by title or content.
