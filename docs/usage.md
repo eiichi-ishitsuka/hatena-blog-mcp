@@ -2,7 +2,7 @@
 
 ## MCPツールの概要
 
-Hatena Blog MCPサーバーは以下の5つのツールを提供します：
+Hatena Blog MCPサーバーは以下の4つのツールを提供します：
 
 ### 1. get_blog_entries
 
@@ -110,33 +110,7 @@ Pythonの基本的な使い方について説明します...
 ---
 ```
 
-### 4. get_blog_categories
-
-ブログで使用されているカテゴリの一覧を取得します。
-
-パラメータ:
-なし
-
-使用例:
-```json
-{
-  "name": "get_blog_categories",
-  "arguments": {}
-}
-```
-
-戻り値:
-```
-Available categories (5):
-
-- プログラミング
-- Python
-- 日記
-- 技術
-- 雑記
-```
-
-### 5. create_blog_entry
+### 4. create_blog_entry
 
 新しいブログエントリを作成します（デフォルトで下書き）。
 
@@ -184,10 +158,6 @@ MCPサーバーは以下のリソースも提供します：
 ### hatena://blog/entries
 
 すべてのブログエントリのサマリーを取得できます。
-
-### hatena://blog/categories
-
-利用可能なカテゴリの一覧を取得できます。
 
 ## エラーハンドリング
 

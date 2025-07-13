@@ -99,15 +99,6 @@ async def handle_list_tools() -> list[Tool]:
             }
         ),
         Tool(
-            name="get_blog_categories",
-            description="Get available blog categories",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "additionalProperties": False
-            }
-        ),
-        Tool(
             name="create_blog_entry",
             description="Create a new blog entry as draft",
             inputSchema={
@@ -192,18 +183,6 @@ async def handle_call_tool(name: str, arguments: dict[str, Any] | None) -> list[
             
             return [TextContent(type="text", text=result.strip())]
         
-        elif name == "get_blog_categories":
-            categories = client.get_categories()
-            
-            if not categories:
-                return [TextContent(type="text", text="No categories found.")]
-            
-            result = f"Available categories ({len(categories)}):\n\n"
-            for category in sorted(categories):
-                result += f"- {category}\n"
-            
-            return [TextContent(type="text", text=result.strip())]
-        
         elif name == "create_blog_entry":
             title = arguments["title"]
             content = arguments["content"]
@@ -266,12 +245,6 @@ async def handle_list_resources() -> list[Resource]:
             name="Blog Entries",
             description="All blog entries from Hatena Blog",
             mimeType="text/plain"
-        ),
-        Resource(
-            uri=AnyUrl("hatena://blog/categories"),
-            name="Blog Categories",
-            description="Available blog categories",
-            mimeType="text/plain"
         )
     ]
 
@@ -288,13 +261,6 @@ async def handle_read_resource(uri: AnyUrl) -> str:
             for entry in entries:
                 result += format_entry_summary(entry)
                 result += "\n\n---\n\n"
-            return result.strip()
-        
-        elif str(uri) == "hatena://blog/categories":
-            categories = client.get_categories()
-            result = f"# Blog Categories\n\n"
-            for category in sorted(categories):
-                result += f"- {category}\n"
             return result.strip()
         
         else:

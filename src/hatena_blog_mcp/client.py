@@ -152,26 +152,6 @@ class HatenaBlogClient:
             
         return results[:max_results]
     
-    def get_categories(self) -> List[str]:
-        """Get available categories.
-        
-        Returns:
-            List of category names
-        """
-        url = f"{self.base_url}/category"
-        
-        response = requests.get(url, auth=self.auth)
-        response.raise_for_status()
-        
-        root = ET.fromstring(response.text)
-        categories = []
-        
-        for category in root.findall('.//atom:category', self.ns):
-            term = category.get('term')
-            if term:
-                categories.append(term)
-        
-        return categories
     
     def create_entry(self, title: str, content: str, categories: List[str] = None, is_draft: bool = True) -> BlogEntry:
         """Create a new blog entry.

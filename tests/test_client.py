@@ -150,28 +150,6 @@ class TestHatenaBlogClient:
             assert len(results) == 1
             assert results[0].title == "Python Tutorial"
     
-    @patch('hatena_blog_mcp.client.requests.get')
-    def test_get_categories(self, mock_get):
-        """Test getting categories."""
-        mock_response = Mock()
-        mock_response.raise_for_status.return_value = None
-        mock_response.text = '''<?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
-    <category term="Python" />
-    <category term="Java" />
-</feed>'''
-        mock_get.return_value = mock_response
-        
-        categories = self.client.get_categories()
-        
-        assert "Python" in categories
-        assert "Java" in categories
-        assert len(categories) == 2
-        
-        mock_get.assert_called_once_with(
-            "https://blog.hatena.ne.jp/test_user/atom/category",
-            auth=("test_user", "test_key")
-        )
     
     @patch('hatena_blog_mcp.client.requests.get')
     def test_discover_entry_collection_url_success(self, mock_get):
