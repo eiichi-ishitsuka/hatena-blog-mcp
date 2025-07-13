@@ -1,0 +1,339 @@
+"""Hatena Blog AtomPub API client."""
+
+import xml.etree.ElementTree as ET
+from datetime import datetime
+from typing import List, Optional
+import requests
+from pydantic import BaseModel
+
+
+class BlogEntry(BaseModel):
+    """Represents a blog entry."""
+    
+    id: str
+    title: str
+    content: str
+    published: datetime
+    updated: datetime
+    author: str
+    categories: List[str] = []
+    is_draft: bool = False
+    edit_url: Optional[str] = None
+
+
+class HatenaBlogClient:
+    """Client for Hatena Blog AtomPub API."""
+    
+    def __init__(self, hatena_id: str, api_key: str, blog_id: str):
+        """Initialize the client.
+        
+        Args:
+            hatena_id: Hatena user ID
+            api_key: API key from account settings
+            blog_id: Blog ID (domain name part)
+        """
+        self.hatena_id = hatena_id
+        self.api_key = api_key
+        self.blog_id = blog_id
+        
+        self.base_url = f"https://blog.hatena.ne.jp/{hatena_id}/atom"
+        
+        self.auth = (hatena_id, api_key)
+        
+        # XML namespaces
+        self.ns = {
+            'atom': 'http://www.w3.org/2005/Atom',
+            'app': 'http://www.w3.org/2007/app'
+        }
+        
+        # Discover the actual entry collection URL
+        self._entry_collection_url = None
+        self._discover_entry_collection_url()
+    
+    def _discover_entry_collection_url(self):
+        """Discover the actual entry collection URL from the service document."""
+        try:
+            response = requests.get(self.base_url, auth=self.auth)
+            response.raise_for_status()
+            
+            root = ET.fromstring(response.text)
+            
+            # Find the collection with entry type
+            for collection in root.findall('.//app:collection', self.ns):
+                href = collection.get('href')
+                accept = collection.find('app:accept', self.ns)
+                if accept is not None and 'type=entry' in accept.text:
+                    self._entry_collection_url = href
+                    break
+            
+            # Fallback to the old method if discovery fails
+            if not self._entry_collection_url:
+                self._entry_collection_url = f"{self.base_url}/entry"
+                
+        except Exception:
+            # Fallback to the old method if discovery fails
+            self._entry_collection_url = f"{self.base_url}/entry"
+    
+    def get_entries(self, page: int = 1) -> List[BlogEntry]:
+        """Get blog entries.
+        
+        Args:
+            page: Page number (1-based)
+            
+        Returns:
+            List of blog entries
+        """
+        url = self._entry_collection_url
+        params = {"page": page} if page > 1 else {}
+        
+        response = requests.get(url, auth=self.auth, params=params)
+        response.raise_for_status()
+        
+        return self._parse_feed(response.text)
+    
+    def get_entry(self, entry_id: str) -> Optional[BlogEntry]:
+        """Get a specific blog entry.
+        
+        Args:
+            entry_id: Entry ID
+            
+        Returns:
+            Blog entry or None if not found
+        """
+        # Since AtomPub API doesn't support direct ID-based entry retrieval,
+        # we need to search through entries to find the matching ID
+        # This is not efficient but necessary due to API limitations
+        
+        page = 1
+        while True:
+            entries = self.get_entries(page)
+            if not entries:
+                break
+                
+            for entry in entries:
+                if entry.id == entry_id:
+                    return entry
+            
+            page += 1
+            # Limit search to avoid infinite loops
+            if page > 50:  # Max 50 pages
+                break
+        
+        return None
+    
+    def search_entries(self, query: str, max_results: int = 10) -> List[BlogEntry]:
+        """Search blog entries by title or content.
+        
+        Args:
+            query: Search query
+            max_results: Maximum number of results
+            
+        Returns:
+            List of matching blog entries
+        """
+        results = []
+        page = 1
+        total_searched = 0
+        
+        while len(results) < max_results and total_searched < 100:  # Limit search scope
+            entries = self.get_entries(page)
+            if not entries:
+                break
+            
+            for entry in entries:
+                total_searched += 1
+                if (query.lower() in entry.title.lower() or 
+                    query.lower() in entry.content.lower()):
+                    results.append(entry)
+                    if len(results) >= max_results:
+                        break
+            
+            page += 1
+            
+        return results[:max_results]
+    
+    
+    def create_entry(self, title: str, content: str, categories: List[str] = None, is_draft: bool = True) -> BlogEntry:
+        """Create a new blog entry.
+        
+        Args:
+            title: Entry title
+            content: Entry content
+            categories: List of category names (optional)
+            is_draft: Whether to create as draft (default: True)
+            
+        Returns:
+            Created blog entry
+            
+        Raises:
+            requests.exceptions.HTTPError: If creation fails
+        """
+        if categories is None:
+            categories = []
+        
+        # Create Atom entry XML
+        entry_xml = self._create_entry_xml(title, content, categories, is_draft)
+        
+        headers = {
+            'Content-Type': 'application/xml; charset=utf-8'
+        }
+        
+        response = requests.post(
+            self._entry_collection_url,
+            auth=self.auth,
+            data=entry_xml.encode('utf-8'),
+            headers=headers
+        )
+        response.raise_for_status()
+        
+        # Parse the response to get the created entry
+        try:
+            # Try parsing as feed first
+            entries = self._parse_feed(response.text)
+            if entries:
+                return entries[0]
+            
+            # If no entries in feed, try parsing as single entry
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(response.text)
+            
+            # Check if root is an entry element
+            if root.tag.endswith('}entry') or root.tag == 'entry':
+                entry = self._parse_entry(root)
+                if entry:
+                    return entry
+            
+            raise ValueError("Failed to parse created entry from response")
+        except ET.ParseError as e:
+            raise ValueError(f"Failed to parse XML response: {e}")
+        except Exception as e:
+            # Include response content for debugging
+            raise ValueError(f"Failed to parse created entry from response: {e}. Response content: {response.text[:500]}...")
+    
+    def _create_entry_xml(self, title: str, content: str, categories: List[str], is_draft: bool) -> str:
+        """Create Atom entry XML for posting.
+        
+        Args:
+            title: Entry title
+            content: Entry content
+            categories: List of category names
+            is_draft: Whether this is a draft
+            
+        Returns:
+            XML string
+        """
+        # Create root entry element
+        entry = ET.Element('entry')
+        entry.set('xmlns', 'http://www.w3.org/2005/Atom')
+        entry.set('xmlns:app', 'http://www.w3.org/2007/app')
+        
+        # Title
+        title_elem = ET.SubElement(entry, 'title')
+        title_elem.text = title
+        
+        # Content
+        content_elem = ET.SubElement(entry, 'content')
+        content_elem.set('type', 'text/html')
+        content_elem.text = content
+        
+        # Categories
+        for category in categories:
+            cat_elem = ET.SubElement(entry, 'category')
+            cat_elem.set('term', category)
+        
+        # Draft status - use app:control/app:draft structure
+        if is_draft:
+            control_elem = ET.SubElement(entry, '{http://www.w3.org/2007/app}control')
+            draft_elem = ET.SubElement(control_elem, '{http://www.w3.org/2007/app}draft')
+            draft_elem.text = 'yes'
+        
+        # Convert to string
+        return ET.tostring(entry, encoding='unicode', method='xml')
+    
+    def _parse_feed(self, xml_content: str) -> List[BlogEntry]:
+        """Parse Atom feed XML.
+        
+        Args:
+            xml_content: XML content
+            
+        Returns:
+            List of blog entries
+        """
+        root = ET.fromstring(xml_content)
+        entries = []
+        
+        for entry_elem in root.findall('.//atom:entry', self.ns):
+            entry = self._parse_entry(entry_elem)
+            if entry:
+                entries.append(entry)
+        
+        return entries
+    
+    def _parse_entry(self, entry_elem: ET.Element) -> Optional[BlogEntry]:
+        """Parse a single entry element.
+        
+        Args:
+            entry_elem: Entry XML element
+            
+        Returns:
+            Blog entry or None if parsing fails
+        """
+        try:
+            # Extract basic information
+            id_elem = entry_elem.find('atom:id', self.ns)
+            title_elem = entry_elem.find('atom:title', self.ns)
+            content_elem = entry_elem.find('atom:content', self.ns)
+            published_elem = entry_elem.find('atom:published', self.ns)
+            updated_elem = entry_elem.find('atom:updated', self.ns)
+            author_elem = entry_elem.find('.//atom:author/atom:name', self.ns)
+            
+            if not all([id_elem is not None, title_elem is not None, content_elem is not None, published_elem is not None]):
+                return None
+            
+            # Extract entry ID from URL
+            entry_id = id_elem.text.split('/')[-1] if id_elem.text else ""
+            
+            # Parse dates
+            published = datetime.fromisoformat(published_elem.text.replace('Z', '+00:00'))
+            updated = published
+            if updated_elem is not None:
+                updated = datetime.fromisoformat(updated_elem.text.replace('Z', '+00:00'))
+            
+            # Extract categories
+            categories = []
+            for cat_elem in entry_elem.findall('atom:category', self.ns):
+                term = cat_elem.get('term')
+                if term:
+                    categories.append(term)
+            
+            # Check if draft - look in app:control/app:draft structure
+            draft_elem = entry_elem.find('.//app:control/app:draft', self.ns)
+            if not draft_elem:
+                # Fallback: try direct app:draft
+                draft_elem = entry_elem.find('.//app:draft', self.ns)
+            is_draft = draft_elem is not None and draft_elem.text == 'yes'
+            
+            # Find edit URL
+            edit_url = None
+            for link in entry_elem.findall('atom:link', self.ns):
+                if link.get('rel') == 'edit':
+                    edit_url = link.get('href')
+                    break
+            
+            return BlogEntry(
+                id=entry_id,
+                title=title_elem.text or "",
+                content=content_elem.text or "",
+                published=published,
+                updated=updated,
+                author=author_elem.text if author_elem is not None else "",
+                categories=categories,
+                is_draft=is_draft,
+                edit_url=edit_url
+            )
+        
+        except Exception as e:
+            # For debugging: print the exception (remove in production)
+            import sys
+            print(f"Parse entry error: {e}", file=sys.stderr)
+            return None

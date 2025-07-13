@@ -1,0 +1,1 @@
+"""Tests for Hatena Blog MCP Server."""
